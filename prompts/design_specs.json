@@ -1,0 +1,156 @@
+{
+    "fifo": {
+        "name": "Synchronous FIFO",
+        "description": "A synchronous FIFO (First-In-First-Out) buffer with parameterizable data width and depth.",
+        "functionality": [
+            "Stores data in a circular buffer with separate read and write pointers",
+            "Write operations store data_in at the write pointer position when wr_en is asserted and FIFO is not full",
+            "Read operations output data from the read pointer position when rd_en is asserted and FIFO is not empty",
+            "Maintains a count of currently stored elements",
+            "Generates full flag when count equals FIFO_DEPTH",
+            "Generates empty flag when count equals zero",
+            "Both pointers wrap around when they reach the end of the buffer"
+        ],
+        "reset_behavior": [
+            "On active-low reset (rst_n=0), write pointer resets to 0",
+            "On active-low reset, read pointer resets to 0",
+            "On active-low reset, data_out resets to 0",
+            "On active-low reset, fifo_count resets to 0"
+        ],
+        "timing_constraints": [
+            "Write and read operations occur on the positive edge of clk",
+            "Simultaneous read and write: count remains unchanged",
+            "Write without read when not full: count increments by 1",
+            "Read without write when not empty: count decrements by 1"
+        ],
+        "safety_properties": [
+            "FIFO should never write when full",
+            "FIFO should never read when empty",
+            "Count should never exceed FIFO_DEPTH",
+            "Count should never be negative",
+            "Full and empty should never be asserted simultaneously"
+        ],
+        "signals": {
+            "clk": "System clock",
+            "rst_n": "Active-low asynchronous reset",
+            "wr_en": "Write enable",
+            "rd_en": "Read enable",
+            "data_in": "Input data bus (DATA_WIDTH bits)",
+            "data_out": "Output data bus (DATA_WIDTH bits)",
+            "full": "FIFO full flag",
+            "empty": "FIFO empty flag",
+            "count": "Number of elements currently stored"
+        }
+    },
+    "arbiter": {
+        "name": "Round-Robin Arbiter",
+        "description": "A round-robin arbiter that grants access to one of NUM_REQ requestors in a fair rotating priority scheme.",
+        "functionality": [
+            "Accepts request signals from NUM_REQ requestors",
+            "Grants access to exactly one requestor at a time using one-hot encoding",
+            "Uses round-robin priority: after granting to requestor i, priority shifts so that requestor i+1 has highest priority",
+            "Uses masked request approach: requests are masked based on priority, falling back to unmasked if no masked requests exist",
+            "Active signal indicates that any grant is currently active"
+        ],
+        "reset_behavior": [
+            "On active-low reset, grant output resets to 0 (no grant)",
+            "On active-low reset, priority_mask resets to all 1s (all requestors have equal priority)"
+        ],
+        "timing_constraints": [
+            "Grant is registered and updates on the positive edge of clk",
+            "When no requests are active, grant is deasserted in the next cycle"
+        ],
+        "safety_properties": [
+            "At most one grant bit should be asserted at any time (mutual exclusion)",
+            "Grant should only be asserted for a requestor that has an active request",
+            "If any request is active, exactly one grant must be asserted in the next cycle",
+            "No starvation: every persistent request must eventually be granted"
+        ],
+        "signals": {
+            "clk": "System clock",
+            "rst_n": "Active-low asynchronous reset",
+            "req": "Request signals from NUM_REQ requestors",
+            "grant": "One-hot grant output",
+            "active": "Indicates any grant is active"
+        }
+    },
+    "fsm_controller": {
+        "name": "Traffic Light FSM Controller",
+        "description": "A finite state machine controller for traffic light sequencing with four states.",
+        "functionality": [
+            "IDLE state: waits for start signal, transitions to GREEN",
+            "GREEN state: active green light, transitions to YELLOW when timer expires or no vehicle sensor",
+            "YELLOW state: active yellow light, transitions to RED when timer expires",
+            "RED state: active red light, transitions to IDLE when timer expires",
+            "timer_start signal is asserted on each state transition to start the timer"
+        ],
+        "reset_behavior": [
+            "On active-low reset, FSM returns to IDLE state"
+        ],
+        "timing_constraints": [
+            "State transitions occur on positive edge of clk",
+            "Output lights reflect the current registered state (Moore machine)",
+            "timer_start is a combinational output from next-state logic"
+        ],
+        "safety_properties": [
+            "Only one light should be active at any time",
+            "In IDLE state, no light should be active",
+            "State encoding should always be valid (only 4 valid states)",
+            "Cannot transition from IDLE without start signal",
+            "Cannot skip states (e.g., GREEN cannot go directly to RED)"
+        ],
+        "signals": {
+            "clk": "System clock",
+            "rst_n": "Active-low asynchronous reset",
+            "start": "Start signal to begin light sequence",
+            "sensor": "Vehicle detection sensor",
+            "timer_expired": "Timer expiration signal",
+            "state": "2-bit state encoding",
+            "light_green": "Green light output",
+            "light_yellow": "Yellow light output",
+            "light_red": "Red light output",
+            "timer_start": "Start timer on state transition"
+        }
+    },
+    "pipeline": {
+        "name": "3-Stage Pipelined Datapath",
+        "description": "A simple 3-stage pipeline (Fetch/Decode -> Execute -> Writeback) supporting four ALU operations.",
+        "functionality": [
+            "Stage 1 (Fetch/Decode): Captures opcode and operands when valid_in is asserted",
+            "Stage 2 (Execute): Computes result based on opcode (ADD, SUB, AND, OR)",
+            "Stage 3 (Writeback): Outputs the computed result with result_valid flag",
+            "Pipeline can be stalled by asserting stall signal (all stages hold their values)",
+            "Pipeline can be flushed by asserting flush signal (all valid bits cleared)",
+            "Operations: ADD (00), SUB (01), AND (10), OR (11)"
+        ],
+        "reset_behavior": [
+            "On active-low reset, all stage registers clear to 0",
+            "On active-low reset, all valid bits clear to 0"
+        ],
+        "timing_constraints": [
+            "Result appears at output 3 cycles after valid_in assertion (no stall/flush)",
+            "During stall, no data propagates between stages",
+            "Flush immediately clears all valid bits but does not clear data",
+            "Flush takes priority over normal operation but not reset"
+        ],
+        "safety_properties": [
+            "result_valid should never be asserted during reset",
+            "During stall, result_valid should hold its previous value",
+            "After flush, result_valid should be 0 within next cycle",
+            "Pipeline latency is exactly 3 cycles under no stall/flush",
+            "Data integrity: result at output matches computation on captured inputs"
+        ],
+        "signals": {
+            "clk": "System clock",
+            "rst_n": "Active-low asynchronous reset",
+            "opcode": "2-bit operation code",
+            "operand_a": "First operand",
+            "operand_b": "Second operand",
+            "valid_in": "Input valid signal",
+            "stall": "Pipeline stall",
+            "flush": "Pipeline flush",
+            "result": "Computed result output",
+            "result_valid": "Result valid flag"
+        }
+    }
+}

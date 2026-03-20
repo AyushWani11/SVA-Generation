@@ -1,0 +1,2 @@
+# VERIFY Framework Dependencies
+openai>=1.0.0        # For LLM API calls (OpenAI/DeepSeek)
