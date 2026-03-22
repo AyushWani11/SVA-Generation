@@ -1,0 +1,99 @@
+=== PROMPT LOG ===
+Timestamp: 2026-03-22T16:09:39.533571
+Call #: 2
+Tag: rtl_driven
+Model: gpt-4o
+Temperature: 0.3
+
+--- USER PROMPT ---
+You are an expert hardware verification engineer. Analyze the following RTL code and generate SystemVerilog Assertions that verify the implementation matches typical design intent.
+
+## RTL Code:
+```systemverilog
+// Synchronous FIFO with parameterizable depth and width
+// Signals: clk, rst_n, wr_en, rd_en, data_in, data_out, full, empty, count
+
+module sync_fifo #(
+    parameter DATA_WIDTH = 8,
+    parameter FIFO_DEPTH = 16,
+    parameter ADDR_WIDTH = $clog2(FIFO_DEPTH)
+) (
+    input  logic                  clk,
+    input  logic                  rst_n,
+    input  logic                  wr_en,
+    input  logic                  rd_en,
+    input  logic [DATA_WIDTH-1:0] data_in,
+    output logic [DATA_WIDTH-1:0] data_out,
+    output logic                  full,
+    output logic                  empty,
+    output logic [ADDR_WIDTH:0]   count
+);
+
+    // Memory array
+    logic [DATA_WIDTH-1:0] mem [0:FIFO_DEPTH-1];
+
+    // Pointers
+    logic [ADDR_WIDTH-1:0] wr_ptr;
+    logic [ADDR_WIDTH-1:0] rd_ptr;
+    logic [ADDR_WIDTH:0]   fifo_count;
+
+    // Write logic
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            wr_ptr <= '0;
+        end else if (wr_en && !full) begin
+            mem[wr_ptr] <= data_in;
+            wr_ptr <= wr_ptr + 1'b1;
+        end
+    end
+
+    // Read logic
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            rd_ptr <= '0;
+            data_out <= '0;
+        end else if (rd_en && !empty) begin
+            data_out <= mem[rd_ptr];
+            rd_ptr <= rd_ptr + 1'b1;
+        end
+    end
+
+    // Count logic
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            fifo_count <= '0;
+        end else begin
+            case ({wr_en && !full, rd_en && !empty})
+                2'b10:   fifo_count <= fifo_count + 1'b1;
+                2'b01:   fifo_count <= fifo_count - 1'b1;
+                default: fifo_count <= fifo_count;
+            endcase
+        end
+    end
+
+    // Status flags
+    assign full  = (fifo_count == FIFO_DEPTH);
+    assign empty = (fifo_count == '0);
+    assign count = fifo_count;
+
+endmodule
+
+```
+
+## Task:
+Generate SVA assertions by analyzing the RTL code structure. Focus on:
+1. **State machine transitions**: Valid state encodings, legal transitions
+2. **Counter boundaries**: Overflow/underflow protection, wrap-around behavior
+3. **Handshake protocols**: Request-grant, valid-ready pairs
+4. **Data integrity**: Data preservation across pipeline stages, FIFO ordering
+5. **Control flow**: Enable/disable conditions, priority encoding correctness
+
+## Requirements:
+- Each assertion MUST be syntactically correct SystemVerilog
+- Use `property`/`endproperty` syntax with `assert property`
+- Use `disable iff (!rst_n)` where appropriate
+- Classify each: // [SAFETY], // [LIVENESS], // [INVARIANT], // [RESET], or // [TIMING]
+- Only use signal names present in the RTL code
+
+Return ONLY the SVA code block.
+

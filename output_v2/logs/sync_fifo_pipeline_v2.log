@@ -1,0 +1,15 @@
+VERIFY V2 Pipeline Log
+Run ID: 2026-03-22T16:09:39_fifo
+Design: sync_fifo
+RTL:    rtl/fifo.sv
+
+--- Metrics ---
+Candidates generated: 10
+Passed pre-formal gate: 0
+Syntax OK: 0
+Proven (formal): 0
+Disproven (CEX): 0
+Refined: 0
+Final kept: 0
+LLM calls: 5
+Total runtime: 0.0s

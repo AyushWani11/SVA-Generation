@@ -1,0 +1,36 @@
+=== PROMPT LOG ===
+Timestamp: 2026-03-22T17:47:49.764241
+Call #: 6
+Tag: syntax_fix_cand_f4c308d8
+Model: gpt-4o
+Temperature: 0.3
+
+--- USER PROMPT ---
+You are an expert SystemVerilog engineer. Fix the syntax errors in the following assertions.
+
+## Assertions with errors:
+```systemverilog
+// [SAFETY] Mock assertion - FIFO should not overflow
+property p_mock_no_overflow;
+    @(posedge clk) disable iff (!rst_n)
+    full |-> !wr_en;
+endproperty
+assert property (p_mock_no_overflow) else $error("Overflow detected");
+```
+
+## Syntax Error Messages:
+Mismatched property/endproperty (2 vs 1)
+
+## Available Signal Names (from RTL):
+clk, count, data_in, data_out, empty, fifo_count, full, mem, rd_en, rd_ptr, rst_n, wr_en, wr_ptr
+
+## Rules:
+- Fix ONLY syntax issues, do NOT change the assertion's semantic intent
+- Do NOT invented new signal names
+- Use proper SystemVerilog assertion syntax
+- Return the corrected assertions ONLY
+
+```systemverilog
+<corrected assertions here>
+```
+

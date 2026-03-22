@@ -1,0 +1,325 @@
+{
+  "run_id": "2026-03-22T17:50:28_fifo",
+  "metadata": {
+    "rtl_path": "rtl/fifo.sv",
+    "design": "sync_fifo"
+  },
+  "contexts": {
+    "rtl": {
+      "module_name": "sync_fifo",
+      "signals_count": 13,
+      "parameters": {
+        "DATA_WIDTH": "8",
+        "FIFO_DEPTH": "16",
+        "ADDR_WIDTH": "$clog2(FIFO_DEPTH"
+      },
+      "fsm_states": [],
+      "clock_candidates": [
+        "clk"
+      ],
+      "reset_candidates": [
+        "rst_n"
+      ]
+    },
+    "spec": {
+      "design_key": "fifo",
+      "design_name": "Synchronous FIFO",
+      "clauses_count": 20
+    },
+    "trace": {
+      "source": "synthetic",
+      "cycles": 200,
+      "invariants_count": 11
+    }
+  },
+  "candidates": [
+    {
+      "candidate_id": "cand_a640a953",
+      "assertion_text": "// [SAFETY] Mock assertion - FIFO should not overflow\nproperty p_mock_no_overflow;\n    @(posedge clk) disable iff (!rst_n)\n    full |-> !wr_en;\nendproperty\nassert property (p_mock_no_overflow) else $error(\"Overflow detected\");",
+      "source_strategy": "spec_driven",
+      "source_prompt_id": "spec_driven:5196b386ba89",
+      "used_signals": [
+        "clk",
+        "full",
+        "rst_n",
+        "wr_en"
+      ],
+      "spec_clause_refs": []
+    },
+    {
+      "candidate_id": "cand_c9c1fdac",
+      "assertion_text": "// [RESET] Mock assertion - Reset clears state\nproperty p_mock_reset;\n    @(posedge clk)\n    !rst_n |-> ##1 (count == 0);\nendproperty\nassert property (p_mock_reset) else $error(\"Reset failed\");",
+      "source_strategy": "spec_driven",
+      "source_prompt_id": "spec_driven:5196b386ba89",
+      "used_signals": [
+        "clk",
+        "count",
+        "rst_n"
+      ],
+      "spec_clause_refs": []
+    },
+    {
+      "candidate_id": "cand_510a835d",
+      "assertion_text": "// [SAFETY] Mock assertion - FIFO should not overflow\nproperty p_mock_no_overflow;\n    @(posedge clk) disable iff (!rst_n)\n    full |-> !wr_en;\nendproperty\nassert property (p_mock_no_overflow) else $error(\"Overflow detected\");",
+      "source_strategy": "rtl_driven",
+      "source_prompt_id": "rtl_driven:1e599c662e38",
+      "used_signals": [
+        "clk",
+        "full",
+        "rst_n",
+        "wr_en"
+      ],
+      "spec_clause_refs": []
+    },
+    {
+      "candidate_id": "cand_db0d5909",
+      "assertion_text": "// [RESET] Mock assertion - Reset clears state\nproperty p_mock_reset;\n    @(posedge clk)\n    !rst_n |-> ##1 (count == 0);\nendproperty\nassert property (p_mock_reset) else $error(\"Reset failed\");",
+      "source_strategy": "rtl_driven",
+      "source_prompt_id": "rtl_driven:1e599c662e38",
+      "used_signals": [
+        "clk",
+        "count",
+        "rst_n"
+      ],
+      "spec_clause_refs": []
+    },
+    {
+      "candidate_id": "cand_5d6482f3",
+      "assertion_text": "// [SAFETY] Mock assertion - FIFO should not overflow\nproperty p_mock_no_overflow;\n    @(posedge clk) disable iff (!rst_n)\n    full |-> !wr_en;\nendproperty\nassert property (p_mock_no_overflow) else $error(\"Overflow detected\");",
+      "source_strategy": "invariant_seeded",
+      "source_prompt_id": "invariant_seeded:3c8c5f40823a",
+      "used_signals": [
+        "clk",
+        "full",
+        "rst_n",
+        "wr_en"
+      ],
+      "spec_clause_refs": []
+    },
+    {
+      "candidate_id": "cand_73de5502",
+      "assertion_text": "// [RESET] Mock assertion - Reset clears state\nproperty p_mock_reset;\n    @(posedge clk)\n    !rst_n |-> ##1 (count == 0);\nendproperty\nassert property (p_mock_reset) else $error(\"Reset failed\");",
+      "source_strategy": "invariant_seeded",
+      "source_prompt_id": "invariant_seeded:3c8c5f40823a",
+      "used_signals": [
+        "clk",
+        "count",
+        "rst_n"
+      ],
+      "spec_clause_refs": []
+    },
+    {
+      "candidate_id": "cand_18c64ec4",
+      "assertion_text": "// [SAFETY] Mock assertion - FIFO should not overflow\nproperty p_mock_no_overflow;\n    @(posedge clk) disable iff (!rst_n)\n    full |-> !wr_en;\nendproperty\nassert property (p_mock_no_overflow) else $error(\"Overflow detected\");",
+      "source_strategy": "holistic",
+      "source_prompt_id": "holistic:7304d36a768c",
+      "used_signals": [
+        "clk",
+        "full",
+        "rst_n",
+        "wr_en"
+      ],
+      "spec_clause_refs": []
+    },
+    {
+      "candidate_id": "cand_71631ce1",
+      "assertion_text": "// [RESET] Mock assertion - Reset clears state\nproperty p_mock_reset;\n    @(posedge clk)\n    !rst_n |-> ##1 (count == 0);\nendproperty\nassert property (p_mock_reset) else $error(\"Reset failed\");",
+      "source_strategy": "holistic",
+      "source_prompt_id": "holistic:7304d36a768c",
+      "used_signals": [
+        "clk",
+        "count",
+        "rst_n"
+      ],
+      "spec_clause_refs": []
+    },
+    {
+      "candidate_id": "cand_95782227",
+      "assertion_text": "// [SAFETY] Mock assertion - FIFO should not overflow\nproperty p_mock_no_overflow;\n    @(posedge clk) disable iff (!rst_n)\n    full |-> !wr_en;\nendproperty\nassert property (p_mock_no_overflow) else $error(\"Overflow detected\");",
+      "source_strategy": "chiraag_generation",
+      "source_prompt_id": "chiraag_generation:c4ea000c93dd",
+      "used_signals": [
+        "clk",
+        "full",
+        "rst_n",
+        "wr_en"
+      ],
+      "spec_clause_refs": []
+    },
+    {
+      "candidate_id": "cand_c3a80a79",
+      "assertion_text": "// [RESET] Mock assertion - Reset clears state\nproperty p_mock_reset;\n    @(posedge clk)\n    !rst_n |-> ##1 (count == 0);\nendproperty\nassert property (p_mock_reset) else $error(\"Reset failed\");",
+      "source_strategy": "chiraag_generation",
+      "source_prompt_id": "chiraag_generation:c4ea000c93dd",
+      "used_signals": [
+        "clk",
+        "count",
+        "rst_n"
+      ],
+      "spec_clause_refs": []
+    }
+  ],
+  "gate_results": [
+    {
+      "candidate_id": "cand_a640a953",
+      "accepted": true,
+      "reject_reason": null,
+      "canonical_hash": "70263756d2f694bd",
+      "diagnostics": {
+        "vacuity_risk": 0.0
+      }
+    },
+    {
+      "candidate_id": "cand_c9c1fdac",
+      "accepted": true,
+      "reject_reason": null,
+      "canonical_hash": "3708d57b9170a3b7",
+      "diagnostics": {
+        "vacuity_risk": 0.0
+      }
+    },
+    {
+      "candidate_id": "cand_510a835d",
+      "accepted": false,
+      "reject_reason": "Duplicate (canonical hash collision)",
+      "canonical_hash": "70263756d2f694bd",
+      "diagnostics": {
+        "vacuity_risk": 0.0
+      }
+    },
+    {
+      "candidate_id": "cand_db0d5909",
+      "accepted": false,
+      "reject_reason": "Duplicate (canonical hash collision)",
+      "canonical_hash": "3708d57b9170a3b7",
+      "diagnostics": {
+        "vacuity_risk": 0.0
+      }
+    },
+    {
+      "candidate_id": "cand_5d6482f3",
+      "accepted": false,
+      "reject_reason": "Duplicate (canonical hash collision)",
+      "canonical_hash": "70263756d2f694bd",
+      "diagnostics": {
+        "vacuity_risk": 0.0
+      }
+    },
+    {
+      "candidate_id": "cand_73de5502",
+      "accepted": false,
+      "reject_reason": "Duplicate (canonical hash collision)",
+      "canonical_hash": "3708d57b9170a3b7",
+      "diagnostics": {
+        "vacuity_risk": 0.0
+      }
+    },
+    {
+      "candidate_id": "cand_18c64ec4",
+      "accepted": false,
+      "reject_reason": "Duplicate (canonical hash collision)",
+      "canonical_hash": "70263756d2f694bd",
+      "diagnostics": {
+        "vacuity_risk": 0.0
+      }
+    },
+    {
+      "candidate_id": "cand_71631ce1",
+      "accepted": false,
+      "reject_reason": "Duplicate (canonical hash collision)",
+      "canonical_hash": "3708d57b9170a3b7",
+      "diagnostics": {
+        "vacuity_risk": 0.0
+      }
+    },
+    {
+      "candidate_id": "cand_95782227",
+      "accepted": false,
+      "reject_reason": "Duplicate (canonical hash collision)",
+      "canonical_hash": "70263756d2f694bd",
+      "diagnostics": {
+        "vacuity_risk": 0.0
+      }
+    },
+    {
+      "candidate_id": "cand_c3a80a79",
+      "accepted": false,
+      "reject_reason": "Duplicate (canonical hash collision)",
+      "canonical_hash": "3708d57b9170a3b7",
+      "diagnostics": {
+        "vacuity_risk": 0.0
+      }
+    }
+  ],
+  "validation_results": [
+    {
+      "candidate_id": "cand_a640a953",
+      "status": "SYNTAX_OK_ONLY",
+      "tool": "regex_standalone",
+      "message": "Basic syntax check passed (no formal tools available)",
+      "proof_depth": null,
+      "runtime_sec": 0.0
+    },
+    {
+      "candidate_id": "cand_c9c1fdac",
+      "status": "SYNTAX_OK_ONLY",
+      "tool": "regex_standalone",
+      "message": "Basic syntax check passed (no formal tools available)",
+      "proof_depth": null,
+      "runtime_sec": 0.0
+    }
+  ],
+  "refinement_actions": [],
+  "analysis": {
+    "classification": {
+      "cand_a640a953": "SAFETY",
+      "cand_c9c1fdac": "RESET"
+    },
+    "redundancy_edges": [],
+    "scores": {
+      "cand_a640a953": {
+        "usefulness": 0.8,
+        "novelty": 0.0
+      },
+      "cand_c9c1fdac": {
+        "usefulness": 0.7,
+        "novelty": 0.0
+      }
+    },
+    "coverage": {
+      "cand_a640a953": [
+        "fifo.reset.1",
+        "fifo.safety.5",
+        "fifo.safety.9",
+        "fifo.timing.10",
+        "fifo.timing.12",
+        "fifo.invariant.15",
+        "fifo.invariant.18",
+        "fifo.safety.6"
+      ],
+      "cand_c9c1fdac": [
+        "fifo.reset.1",
+        "fifo.safety.7",
+        "fifo.safety.8",
+        "fifo.timing.10",
+        "fifo.timing.11",
+        "fifo.timing.12",
+        "fifo.timing.13",
+        "fifo.invariant.17",
+        "fifo.invariant.18",
+        "fifo.invariant.19"
+      ]
+    }
+  },
+  "metrics": {
+    "total_candidates": 10,
+    "gated_in": 2,
+    "syntax_ok": 2,
+    "proven_formal": 0,
+    "disproven": 0,
+    "refined": 0,
+    "final_kept": 2,
+    "llm_calls": 5,
+    "total_runtime_sec": 0.05
+  }
+}

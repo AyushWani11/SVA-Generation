@@ -1,0 +1,46 @@
+=== RESPONSE LOG ===
+Timestamp: 2026-03-22T17:47:49.746681
+Call #: 2
+Tag: rtl_driven
+Model: mock
+Input tokens: 0
+Output tokens: 0
+Assertions extracted: 2
+
+--- RAW RESPONSE ---
+// Mock SVA response (API not configured)
+// Tag: rtl_driven
+// To use real LLM, set OPENAI_API_KEY or DEEPSEEK_API_KEY environment variable
+
+// [SAFETY] Mock assertion - FIFO should not overflow
+property p_mock_no_overflow;
+    @(posedge clk) disable iff (!rst_n)
+    full |-> !wr_en;
+endproperty
+assert property (p_mock_no_overflow) else $error("Overflow detected");
+
+// [RESET] Mock assertion - Reset clears state
+property p_mock_reset;
+    @(posedge clk)
+    !rst_n |-> ##1 (count == 0);
+endproperty
+assert property (p_mock_reset) else $error("Reset failed");
+
+
+--- EXTRACTED ASSERTIONS ---
+
+[Assertion 1]
+// [SAFETY] Mock assertion - FIFO should not overflow
+property p_mock_no_overflow;
+    @(posedge clk) disable iff (!rst_n)
+    full |-> !wr_en;
+endproperty
+assert property (p_mock_no_overflow) else $error("Overflow detected");
+
+[Assertion 2]
+// [RESET] Mock assertion - Reset clears state
+property p_mock_reset;
+    @(posedge clk)
+    !rst_n |-> ##1 (count == 0);
+endproperty
+assert property (p_mock_reset) else $error("Reset failed");

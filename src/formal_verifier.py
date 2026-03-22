@@ -242,18 +242,14 @@ prep -top {module_name or 'top'}
         errors = []
         
         # Check for property/endproperty balance
-        prop_count = len(re.findall(r'\bproperty\b', assertion))
+        prop_declarations = len(re.findall(r'(?<!\w)\bproperty\s+\w+', assertion))
         endprop_count = len(re.findall(r'\bendproperty\b', assertion))
-        if prop_count != endprop_count:
-            errors.append(f"Mismatched property/endproperty ({prop_count} vs {endprop_count})")
+        if prop_declarations != endprop_count:
+            errors.append(f"Mismatched property/endproperty ({prop_declarations} vs {endprop_count})")
         
         # Check for assert statement
         if not re.search(r'\bassert\s+property\b', assertion):
             errors.append("Missing 'assert property' statement")
-        
-        # Check for property name
-        if not re.search(r'property\s+\w+', assertion):
-            errors.append("Missing property name")
         
         # Check for clock specification
         if not re.search(r'@\s*\(\s*(?:posedge|negedge)\s+\w+\s*\)', assertion):

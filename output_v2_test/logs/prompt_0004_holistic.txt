@@ -1,0 +1,162 @@
+=== PROMPT LOG ===
+Timestamp: 2026-03-22T17:47:49.754145
+Call #: 4
+Tag: holistic
+Model: gpt-4o
+Temperature: 0.3
+
+--- USER PROMPT ---
+You are an expert hardware verification engineer. I am providing you with the comprehensive context for a hardware design, including its specification, RTL implementation, and dynamically mined simulation invariants.
+
+## Design: Synchronous FIFO
+## Description: A synchronous FIFO (First-In-First-Out) buffer with parameterizable data width and depth.
+
+## Design Specification:
+[RESET] On active-low reset (rst_n=0), write pointer resets to 0
+[RESET] On active-low reset, read pointer resets to 0
+[RESET] On active-low reset, data_out resets to 0
+[RESET] On active-low reset, fifo_count resets to 0
+[SAFETY] FIFO should never write when full
+[SAFETY] FIFO should never read when empty
+[SAFETY] Count should never exceed FIFO_DEPTH
+[SAFETY] Count should never be negative
+[SAFETY] Full and empty should never be asserted simultaneously
+[TIMING] Write and read operations occur on the positive edge of clk
+[TIMING] Simultaneous read and write: count remains unchanged
+[TIMING] Write without read when not full: count increments by 1
+[TIMING] Read without write when not empty: count decrements by 1
+[INVARIANT] Stores data in a circular buffer with separate read and write pointers
+[INVARIANT] Write operations store data_in at the write pointer position when wr_en is asserted and FIFO is not full
+[INVARIANT] Read operations output data from the read pointer position when rd_en is asserted and FIFO is not empty
+[INVARIANT] Maintains a count of currently stored elements
+[INVARIANT] Generates full flag when count equals FIFO_DEPTH
+[INVARIANT] Generates empty flag when count equals zero
+[INVARIANT] Both pointers wrap around when they reach the end of the buffer
+
+## RTL Code:
+```systemverilog
+// Synchronous FIFO with parameterizable depth and width
+// Signals: clk, rst_n, wr_en, rd_en, data_in, data_out, full, empty, count
+
+module sync_fifo #(
+    parameter DATA_WIDTH = 8,
+    parameter FIFO_DEPTH = 16,
+    parameter ADDR_WIDTH = $clog2(FIFO_DEPTH)
+) (
+    input  logic                  clk,
+    input  logic                  rst_n,
+    input  logic                  wr_en,
+    input  logic                  rd_en,
+    input  logic [DATA_WIDTH-1:0] data_in,
+    output logic [DATA_WIDTH-1:0] data_out,
+    output logic                  full,
+    output logic                  empty,
+    output logic [ADDR_WIDTH:0]   count
+);
+
+    // Memory array
+    logic [DATA_WIDTH-1:0] mem [0:FIFO_DEPTH-1];
+
+    // Pointers
+    logic [ADDR_WIDTH-1:0] wr_ptr;
+    logic [ADDR_WIDTH-1:0] rd_ptr;
+    logic [ADDR_WIDTH:0]   fifo_count;
+
+    // Write logic
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            wr_ptr <= '0;
+        end else if (wr_en && !full) begin
+            mem[wr_ptr] <= data_in;
+            wr_ptr <= wr_ptr + 1'b1;
+        end
+    end
+
+    // Read logic
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            rd_ptr <= '0;
+            data_out <= '0;
+        end else if (rd_en && !empty) begin
+            data_out <= mem[rd_ptr];
+            rd_ptr <= rd_ptr + 1'b1;
+        end
+    end
+
+    // Count logic
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            fifo_count <= '0;
+        end else begin
+            case ({wr_en && !full, rd_en && !empty})
+                2'b10:   fifo_count <= fifo_count + 1'b1;
+                2'b01:   fifo_count <= fifo_count - 1'b1;
+                default: fifo_count <= fifo_count;
+            endcase
+        end
+    end
+
+    // Status flags
+    assign full  = (fifo_count == FIFO_DEPTH);
+    assign empty = (fifo_count == '0);
+    assign count = fifo_count;
+
+endmodule
+
+```
+
+## Signal Definitions:
+  input    [1-bit]    clk: System clock
+  output   [1-bit]    count: Number of elements currently stored
+  input    [1-bit]    data_in: Input data bus (DATA_WIDTH bits)
+  output   [1-bit]    data_out: Output data bus (DATA_WIDTH bits)
+  output   [1-bit]    empty: FIFO empty flag
+  internal [1-bit]    fifo_count: 
+  output   [1-bit]    full: FIFO full flag
+  internal [1-bit]    mem: 
+  input    [1-bit]    rd_en: Read enable
+  internal [1-bit]    rd_ptr: 
+  input    [1-bit]    rst_n: Active-low asynchronous reset
+  input    [1-bit]    wr_en: Write enable
+  internal [1-bit]    wr_ptr: 
+
+## Dynamically Mined Invariants (from simulation traces):
+=== Mined Invariants (10 total) ===
+  - full == 0  (confidence: 100%)
+  - (wr_en >= 0) && (wr_en <= 1)  (confidence: 80%)
+  - (rd_en >= 0) && (rd_en <= 1)  (confidence: 80%)
+  - (empty >= 0) && (empty <= 1)  (confidence: 80%)
+  - (count >= 0) && (count <= 6)  (confidence: 80%)
+  - (wr_ptr >= 0) && (wr_ptr <= 15)  (confidence: 80%)
+  - (rd_ptr >= 0) && (rd_ptr <= 15)  (confidence: 80%)
+  - wr_en |-> !full  (confidence: 85%)
+  - rd_en |-> !full  (confidence: 85%)
+  - empty |-> !full  (confidence: 85%)
+
+## Task:
+Generate a robust set of SystemVerilog Assertions (SVA) that comprehensively verify this design. Synthesize insights from the specification, RTL structure, and mined invariants simultaneously.
+
+## Requirements:
+- Analyze the design step-by-step first. Write your reasoning in a `<step_by_step_reasoning>` block.
+- Identify complex cross-signal relationships and corner cases.
+- Convert meaningful invariants and specification rules into correct SVA.
+- Each assertion MUST use proper `property`/`endproperty` and `assert property` syntax.
+- Classify each: // [SAFETY], // [LIVENESS], // [INVARIANT], // [RESET], or // [TIMING]
+
+## Output Format:
+<step_by_step_reasoning>
+1. Reviewing Specification...
+2. Analyzing RTL structure...
+3. Evaluating Mined Invariants...
+4. Planning SystemVerilog Assertions...
+</step_by_step_reasoning>
+
+```systemverilog
+// [CLASSIFICATION] Description
+property p_name;
+    @(posedge clk) disable iff (!rst_n)
+    expression |-> consequence;
+endproperty
+assert property (p_name) else $error("p_name failed");
+```
+

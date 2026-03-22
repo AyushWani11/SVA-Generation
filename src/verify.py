@@ -698,9 +698,29 @@ Examples:
     parser.add_argument("--output", type=str, default="output", help="Output directory")
     parser.add_argument("--max-iter", type=int, default=3, help="Max refinement iterations")
     parser.add_argument("--all", action="store_true", help="Run on all designs in rtl/ directory")
+    parser.add_argument("--v2", action="store_true", help="Use the V2 modular pipeline")
     
     args = parser.parse_args()
-    
+
+    # ── V2 pipeline path ──────────────────────────────────────────
+    if args.v2 and args.rtl:
+        from llm_interface import LLMInterface
+        from core.orchestrator_v2 import VerifyOrchestratorV2
+
+        llm = LLMInterface(
+            provider=args.provider, model=args.model,
+            api_key=args.api_key, log_dir=str(Path(args.output) / "logs"),
+        )
+        orch = VerifyOrchestratorV2(llm=llm, output_dir=args.output)
+        orch.run(
+            rtl_path=args.rtl,
+            spec_path=args.spec or "",
+            design_key=args.design or "",
+            max_refine_iter=args.max_iter,
+        )
+        return
+
+    # ── V1 pipeline paths (unchanged) ─────────────────────────────
     if args.all:
         # Run on all RTL files
         rtl_dir = Path(__file__).parent.parent / "rtl"
