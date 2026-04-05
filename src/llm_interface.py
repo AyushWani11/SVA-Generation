@@ -48,7 +48,14 @@ class LLMInterface:
             max_tokens: Maximum response tokens
         """
         self.provider = provider
+        
+        # Auto-adjust default model per provider
         self.model = model
+        if self.model == "gpt-4o":
+            if self.provider == "gemini":
+                self.model = "gemini-2.5-flash"
+            elif self.provider == "deepseek":
+                self.model = "deepseek-chat"
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.log_dir = Path(log_dir)
@@ -92,9 +99,13 @@ class LLMInterface:
             else:
                 print(f"[WARNING] Unknown provider '{self.provider}', using mock mode")
                 self.client = None
-        except ImportError:
-            print("[WARNING] openai package not installed. Using mock mode.")
-            print("  Install with: pip install openai")
+        except ImportError as e:
+            if self.provider == "gemini":
+                print("[WARNING] google-genai package not installed. Using mock mode.")
+                print("  Install with: pip install google-genai")
+            else:
+                print(f"[WARNING] openai package not installed. Using mock mode.")
+                print("  Install with: pip install openai")
             self.client = None
         except Exception as e:
             print(f"[WARNING] Failed to initialize client: {e}. Using mock mode.")
