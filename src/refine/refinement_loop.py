@@ -34,24 +34,47 @@ class RefinementLoop:
         rtl_ctx: RTLContext,
         spec_ctx: SpecContext,
         failed_results: List[ValidationResult],
-        candidates_map: dict,  # candidate_id -> CandidateAssertion
+        candidates_map: dict,  # candidate_id → CandidateAssertion
         max_iter: int = 3,
+        max_total_api_calls: int = 10,
     ) -> Tuple[List[CandidateAssertion], List[RefinementAction]]:
         """
         Attempt to repair each failed candidate up to *max_iter* times.
 
+        Hard limits:
+          • max_iter            — per-candidate maximum iterations.
+          • max_total_api_calls — global session budget; when exhausted the
+                                   remaining candidates are logged as
+                                   BUDGET_EXHAUSTED without further LLM calls.
+
         Returns:
             revised_candidates — new CandidateAssertions (one per successful repair)
-            actions — full log of every refinement attempt
+            actions            — full log of every refinement attempt
         """
         revised: List[CandidateAssertion] = []
         actions: List[RefinementAction] = []
         improvements = 0
+        api_calls_used = 0          # global counter across all candidates
 
         for result in failed_results:
             cand = candidates_map.get(result.candidate_id)
             if cand is None:
                 continue
+
+            # ── Global budget guard ──────────────────────────────────────
+            if api_calls_used >= max_total_api_calls:
+                actions.append(RefinementAction(
+                    candidate_id=cand.candidate_id,
+                    iteration=0,
+                    verdict="BUDGET_EXHAUSTED",
+                    rationale=(
+                        f"Global API budget of {max_total_api_calls} calls reached; "
+                        "skipping further refinement."
+                    ),
+                ))
+                continue
+
+            last_text: Optional[str] = None  # for convergence detection
 
             for iteration in range(1, max_iter + 1):
                 if self.should_stop(iteration, improvements, max_iter):
@@ -59,6 +82,24 @@ class RefinementLoop:
 
                 action = self.propose_fix(result, rtl_ctx, spec_ctx, cand, iteration)
                 actions.append(action)
+                api_calls_used += 1
+
+                # ── UNFIXABLE early break ──────────────────────────────
+                if action.verdict == "UNFIXABLE":
+                    break
+
+                # ── Convergence guard ─────────────────────────────────────
+                new_text = action.revised_assertion_text
+                if new_text and new_text == last_text:
+                    # LLM returned identical broken text — no point continuing
+                    actions.append(RefinementAction(
+                        candidate_id=cand.candidate_id,
+                        iteration=iteration,
+                        verdict="UNFIXABLE_STALL",
+                        rationale="LLM produced the same assertion twice; convergence stall detected.",
+                    ))
+                    break
+                last_text = new_text
 
                 if action.revised_assertion_text:
                     improvements += 1
@@ -75,6 +116,10 @@ class RefinementLoop:
                         metadata={"parent_id": cand.candidate_id, "iteration": iteration},
                     ))
                     break  # move to next failed candidate once we get a fix
+
+                # ── Per-iteration global budget check ─────────────────────
+                if api_calls_used >= max_total_api_calls:
+                    break
 
         return revised, actions
 

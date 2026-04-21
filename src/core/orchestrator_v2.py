@@ -90,6 +90,7 @@ class VerifyOrchestratorV2:
         design_key: str,
         vcd_path: Optional[str] = None,
         max_refine_iter: int = 3,
+        max_refine_budget: int = 10,
     ) -> PipelineArtifact:
         """Execute the full V2 pipeline and return a PipelineArtifact."""
         run_id = f"{datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}_{design_key}"
@@ -127,6 +128,14 @@ class VerifyOrchestratorV2:
             gate_results.append(gr)
             if gr.accepted:
                 cand.canonical_hash = gr.canonical_hash
+                if gr.fuzzy_corrections:
+                    self._log(
+                        f"  [FUZZY] {cand.candidate_id}: "
+                        + ", ".join(
+                            f"{orig} → {fixed}"
+                            for orig, fixed in gr.fuzzy_corrections.items()
+                        )
+                    )
                 gated_candidates.append(cand)
 
         rejected = len(candidates) - len(gated_candidates)
@@ -147,7 +156,9 @@ class VerifyOrchestratorV2:
                   if v.status in (AssertionStatus.SYNTAX_ERROR, AssertionStatus.DISPROVEN_CEX)]
         cand_map = {c.candidate_id: c for c in gated_candidates}
         revised, refinement_actions = self._refiner.run(
-            rtl_ctx, spec_ctx, failed, cand_map, max_iter=max_refine_iter,
+            rtl_ctx, spec_ctx, failed, cand_map,
+            max_iter=max_refine_iter,
+            max_total_api_calls=max_refine_budget,
         )
         self._log(f"  Refined {len(revised)} candidates from {len(failed)} failures")
 

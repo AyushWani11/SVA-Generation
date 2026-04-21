@@ -12,6 +12,7 @@ Checks:
 """
 
 import re
+import difflib
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import sys
@@ -37,14 +38,22 @@ class PreFormalGate:
         """Run all checks on a single candidate and return a GateResult."""
         diagnostics: Dict[str, Any] = {}
 
-        # C1 — signal validity
-        sig_ok, bad_signals = self.check_signal_validity(candidate, rtl_ctx)
+        # C1 — signal validity (exact + fuzzy fallback)
+        sig_ok, bad_signals, corrections, corrected_text = self.check_signal_validity(
+            candidate, rtl_ctx
+        )
         if not sig_ok:
             return GateResult(
                 candidate_id=candidate.candidate_id,
                 accepted=False,
-                reject_reason=f"Unknown signals: {', '.join(bad_signals)}",
+                reject_reason=f"Unknown signals (no fuzzy match): {', '.join(bad_signals)}",
                 diagnostics={"bad_signals": bad_signals},
+            )
+        # Apply fuzzy corrections to the working text for downstream steps
+        if corrections:
+            candidate.assertion_text = corrected_text
+            candidate.quality_flags.append(
+                f"fuzzy_corrected:{','.join(f'{o}→{c}' for o, c in corrections.items())}"
             )
 
         # C2 — syntax shape
@@ -88,14 +97,35 @@ class PreFormalGate:
             normalized_text=norm,
             canonical_hash=chash,
             diagnostics=diagnostics,
+            corrected_text=corrected_text if corrections else None,
+            fuzzy_corrections=corrections,
         )
 
     # ── C1: signal validity ───────────────────────────────────────────
 
+    # Minimum similarity ratio (0.0–1.0) for a fuzzy match to be accepted.
+    FUZZY_CUTOFF = 0.70
+
     def check_signal_validity(
         self, candidate: CandidateAssertion, rtl_ctx: RTLContext
-    ) -> Tuple[bool, List[str]]:
-        """Check that all identifiers in the assertion are known signals or SVA keywords."""
+    ) -> Tuple[bool, List[str], Dict[str, str], str]:
+        """
+        Two-phase signal validity check.
+
+        Phase 1 — exact match against known signal/parameter names.
+        Phase 2 — for unknowns, fuzzy-match against the known dictionary
+                   using difflib (stdlib).  If a single close match is found
+                   at >= FUZZY_CUTOFF similarity the identifier is auto-corrected
+                   in the returned text.
+
+        Returns:
+            (all_valid, still_unknown, corrections_map, corrected_text)
+            • all_valid       — True if every identifier was resolved.
+            • still_unknown   — identifiers that could not be resolved at all.
+            • corrections_map — {original: corrected} for every fuzzy fix applied.
+            • corrected_text  — assertion text with fuzzy corrections applied
+                                (same as input when corrections_map is empty).
+        """
         sva_keywords = {
             "property", "endproperty", "assert", "assume", "cover",
             "posedge", "negedge", "disable", "iff", "begin", "end",
@@ -111,25 +141,57 @@ class PreFormalGate:
             "P", "_P_",
         }
 
+        original_text = candidate.assertion_text
+
         # Strip comments and string literals before extracting identifiers
-        code = candidate.assertion_text
-        # Remove single-line comments
+        code = original_text
         code = re.sub(r"//[^\n]*", "", code)
-        # Remove string literals inside $error("..."), $warning("..."), etc.
         code = re.sub(r'"[^"]*"', "", code)
 
         all_ids = set(re.findall(r"\b([a-zA-Z_]\w*)\b", code))
-        # Remove SVA keywords and dollar-prefixed system tasks
-        non_kw = {i for i in all_ids if i not in sva_keywords and not i.startswith("$") and not i.startswith("p_")}
+        non_kw = {
+            i for i in all_ids
+            if i not in sva_keywords
+            and not i.startswith("$")
+            and not i.startswith("p_")
+        }
 
         known = set(rtl_ctx.signals.keys()) | set(rtl_ctx.parameters.keys())
         unknown = non_kw - known
-        # Allow property-name identifiers that start with p_ or end with _prop
+        # Allow property-name identifiers
         unknown = {u for u in unknown if not (u.startswith("p_") or u.endswith("_prop"))}
 
-        if unknown:
-            return False, sorted(unknown)
-        return True, []
+        if not unknown:
+            return True, [], {}, original_text
+
+        # ── Phase 2: fuzzy matching ────────────────────────────────────
+        known_list = sorted(known)          # stable ordering for difflib
+        corrections: Dict[str, str] = {}
+        still_unknown: List[str] = []
+
+        for ident in sorted(unknown):
+            matches = difflib.get_close_matches(
+                ident, known_list,
+                n=1,
+                cutoff=self.FUZZY_CUTOFF,
+            )
+            if matches:
+                corrections[ident] = matches[0]
+            else:
+                still_unknown.append(ident)
+
+        if still_unknown:
+            return False, still_unknown, corrections, original_text
+
+        # All unknowns resolved — apply corrections to the assertion text
+        corrected = original_text
+        for original_id, fixed_id in corrections.items():
+            # Replace whole-word occurrences only to avoid partial substitutions
+            corrected = re.sub(
+                rf"\b{re.escape(original_id)}\b", fixed_id, corrected
+            )
+
+        return True, [], corrections, corrected
 
     # ── C2: syntax shape ─────────────────────────────────────────────
 

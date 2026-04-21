@@ -118,6 +118,10 @@ class GateResult:
     normalized_text: Optional[str] = None
     canonical_hash: Optional[str] = None
     diagnostics: Dict[str, Any] = field(default_factory=dict)
+    # Set when fuzzy signal correction was applied; downstream should use this
+    # text instead of the original candidate assertion_text.
+    corrected_text: Optional[str] = None
+    fuzzy_corrections: Dict[str, str] = field(default_factory=dict)  # original → corrected
 
 
 # ── Stage D: Formal Validation ────────────────────────────────────────
