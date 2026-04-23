@@ -691,7 +691,7 @@ Examples:
     parser.add_argument("--spec", type=str, default="", help="Path to design specification JSON")
     parser.add_argument("--design", type=str, default="", help="Design key in spec JSON")
     parser.add_argument("--provider", type=str, default="openai",
-                        choices=["openai", "deepseek", "local", "gemini"],
+                        choices=["openai", "deepseek", "local", "gemini", "groq"],
                         help="LLM provider")
     parser.add_argument("--model", type=str, default="gpt-4o", help="LLM model name")
     parser.add_argument("--api-key", type=str, default="", help="API key (or use env var)")

@@ -13,7 +13,6 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any, Set
 from dataclasses import dataclass, field
 
-
 @dataclass
 class LLMResponse:
     """Structured LLM response."""
@@ -25,7 +24,6 @@ class LLMResponse:
     model: str = ""
     timestamp: str = ""
 
-
 class LLMInterface:
     """Unified interface for LLM API calls with logging."""
     
@@ -36,26 +34,19 @@ class LLMInterface:
                  log_dir: str = "output/logs",
                  temperature: float = 0.3,
                  max_tokens: int = 4096):
-        """
-        Initialize LLM interface.
         
-        Args:
-            provider: 'openai', 'deepseek', or 'local'
-            model: Model name
-            api_key: API key (or set via environment variable)
-            log_dir: Directory for prompt/response logs
-            temperature: Sampling temperature
-            max_tokens: Maximum response tokens
-        """
         self.provider = provider
+        self.model = model
         
         # Auto-adjust default model per provider
-        self.model = model
         if self.model == "gpt-4o":
             if self.provider == "gemini":
-                self.model = "gemini-2.5-flash"
+                self.model = "gemini-2.0-flash" # Updated for 2026
             elif self.provider == "deepseek":
                 self.model = "deepseek-chat"
+            elif self.provider == "groq":
+                self.model = "llama-3.3-70b-versatile" # Added Groq default
+                
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.log_dir = Path(log_dir)
@@ -74,10 +65,11 @@ class LLMInterface:
             self.api_key = os.environ.get("DEEPSEEK_API_KEY", "")
         elif provider == "gemini":
             self.api_key = os.environ.get("GEMINI_API_KEY", "")
+        elif provider == "groq":
+            self.api_key = os.environ.get("GROQ_API_KEY", "")
         else:
             self.api_key = ""
         
-        # Initialize client
         self.client = None
         self._init_client()
     
@@ -89,73 +81,52 @@ class LLMInterface:
                 self.client = OpenAI(api_key=self.api_key)
             elif self.provider == "deepseek":
                 from openai import OpenAI
-                self.client = OpenAI(
-                    api_key=self.api_key,
-                    base_url="https://api.deepseek.com"
-                )
+                self.client = OpenAI(api_key=self.api_key, base_url="https://api.deepseek.com")
             elif self.provider == "gemini":
                 from google import genai
                 self.client = genai.Client(api_key=self.api_key)
+            elif self.provider == "groq":
+                from groq import Groq
+                self.client = Groq(api_key=self.api_key)
             else:
                 print(f"[WARNING] Unknown provider '{self.provider}', using mock mode")
                 self.client = None
         except ImportError as e:
-            if self.provider == "gemini":
-                print("[WARNING] google-genai package not installed. Using mock mode.")
-                print("  Install with: pip install google-genai")
-            else:
-                print(f"[WARNING] openai package not installed. Using mock mode.")
-                print("  Install with: pip install openai")
+            pkg = "groq" if self.provider == "groq" else "openai"
+            print(f"[WARNING] {pkg} package not installed. Using mock mode.")
+            print(f"  Install with: pip install {pkg}")
             self.client = None
-        except Exception as e:
-            print(f"[WARNING] Failed to initialize client: {e}. Using mock mode.")
-            self.client = None
-    
+
     def call(self, prompt: str, system_prompt: str = "", tag: str = "general") -> LLMResponse:
-        """
-        Make an LLM API call.
-        
-        Args:
-            prompt: User prompt
-            system_prompt: System prompt (optional)
-            tag: Tag for logging purposes
-            
-        Returns:
-            LLMResponse with raw text and parsed assertions
-        """
         self.call_count += 1
         timestamp = datetime.now().isoformat()
-        
-        # Log the prompt
         self._log_prompt(prompt, system_prompt, tag, timestamp)
         
         if self.client is None:
             return self._mock_response(prompt, tag, timestamp)
         
         try:
+            # logic for Gemini (Google GenAI SDK)
             if self.provider == "gemini":
                 from google.genai import types
-                
                 config = types.GenerateContentConfig(
                     system_instruction=system_prompt if system_prompt else None,
                     temperature=self.temperature,
                     max_output_tokens=self.max_tokens,
                 )
-                
-                response = self.client.models.generate_content(
-                    model=self.model,
-                    contents=prompt,
-                    config=config
-                )
+                response = self.client.models.generate_content(model=self.model, contents=prompt, config=config)
                 raw_text = response.text
-                prompt_tokens = response.usage_metadata.prompt_token_count if hasattr(response, "usage_metadata") and response.usage_metadata else 0
-                completion_tokens = response.usage_metadata.candidates_token_count if hasattr(response, "usage_metadata") and response.usage_metadata else 0
+                prompt_tokens = response.usage_metadata.prompt_token_count if response.usage_metadata else 0
+                completion_tokens = response.usage_metadata.candidates_token_count if response.usage_metadata else 0
+            
+            # Logic for OpenAI, DeepSeek, and NOW Groq (OpenAI-compatible / Groq SDK)
             else:
                 messages = []
                 if system_prompt:
                     messages.append({"role": "system", "content": system_prompt})
                 messages.append({"role": "user", "content": prompt})
                 
+                # Both Groq and OpenAI use the same chat.completions.create signature
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,
@@ -178,15 +149,14 @@ class LLMInterface:
                 model=self.model,
                 timestamp=timestamp
             )
-            
-            # Log the response
             self._log_response(result, tag, timestamp)
-            
             return result
             
         except Exception as e:
             print(f"[ERROR] LLM API call failed: {e}")
             return self._mock_response(prompt, tag, timestamp, error=str(e))
+            
+  
     
     def _extract_assertions(self, text: str) -> List[str]:
         """Extract individual SVA assertions from LLM response text."""

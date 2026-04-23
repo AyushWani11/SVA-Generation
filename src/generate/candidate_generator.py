@@ -24,7 +24,6 @@ from generate.prompt_engine import PromptEngine
 class CandidateGenerator:
     """Generate CandidateAssertions via multiple LLM-backed strategies."""
 
-    # Strategies in default execution order
     DEFAULT_STRATEGIES = [
         "spec_driven",
         "rtl_driven",
@@ -37,8 +36,6 @@ class CandidateGenerator:
         self._llm = llm
         self._pe = prompt_engine or PromptEngine()
 
-    # ── public API ────────────────────────────────────────────────────
-
     def generate(
         self,
         rtl_ctx: RTLContext,
@@ -50,7 +47,6 @@ class CandidateGenerator:
         strategies = strategies or self.DEFAULT_STRATEGIES
         all_candidates: List[CandidateAssertion] = []
 
-        # Build shared payload fragments
         signal_defs = self._format_signals(rtl_ctx, spec_ctx)
         spec_text = self._format_spec(spec_ctx)
         mined_text = self._format_invariants(trace_ctx)
@@ -61,14 +57,12 @@ class CandidateGenerator:
                 signal_defs, spec_text, mined_text,
             )
             if payload is None:
-                continue  # skip strategies that cannot be run
+                continue 
 
             candidates = self._run_strategy(strategy, payload, rtl_ctx)
             all_candidates.extend(candidates)
 
         return all_candidates
-
-    # ── strategy runner ───────────────────────────────────────────────
 
     def _run_strategy(
         self, strategy: str, payload: Dict[str, Any], rtl_ctx: RTLContext,
@@ -79,8 +73,21 @@ class CandidateGenerator:
 
         response = self._llm.call(prompt, tag=strategy)
 
+        # CRITICAL FIX: Look for 'raw_text' first!
+        raw_text = getattr(response, "raw_text", getattr(response, "text", getattr(response, "content", str(response))))
+
+        # If it still stringified the object, manually unescape the newlines
+        if isinstance(raw_text, str):
+            raw_text = raw_text.replace('\\n', '\n').replace('\\t', ' ')
+
+        extracted_texts = self._extract_assertions(raw_text)
+
+        if not extracted_texts and strategy not in ["chiraag_semantic_breakdown", "sangam_mapping"]:
+            print(f"\n      [DEBUG] Strategy '{strategy}' extracted 0 assertions!")
+            print(f"      [DEBUG] Raw LLM Output snippet:\n{raw_text[:500]}...\n")
+
         candidates: List[CandidateAssertion] = []
-        for assertion_text in response.assertions:
+        for assertion_text in extracted_texts:
             cid = f"cand_{uuid.uuid4().hex[:8]}"
             prop_name = self._extract_property_name(assertion_text)
             intent_hint = self._guess_intent(assertion_text)
@@ -98,8 +105,6 @@ class CandidateGenerator:
 
         return candidates
 
-    # ── payload builders ──────────────────────────────────────────────
-
     def _build_payload(
         self,
         strategy: str,
@@ -110,7 +115,6 @@ class CandidateGenerator:
         spec_text: str,
         mined_text: str,
     ) -> Optional[Dict[str, Any]]:
-        """Build the template-specific payload dict; returns None if not runnable."""
         design_name = spec_ctx.design_name or rtl_ctx.module_name
         description = spec_ctx.description or design_name
 
@@ -134,20 +138,32 @@ class CandidateGenerator:
                 signal_defs=signal_defs, mined_invariants=mined_text,
             )
         if strategy == "chiraag_generation":
-            # Requires semantic breakdown — use empty if none available
             return dict(
                 design_name=design_name,
                 rtl_code=rtl_ctx.raw_code,
                 semantic_breakdown_json="[]",
             )
-        return None  # unknown strategy
+        return None
 
-    # ── helpers ───────────────────────────────────────────────────────
+    def _extract_assertions(self, text: str) -> List[str]:
+        # Fix hallucinated outer wrappers by the LLM
+        text = re.sub(r'@\s*\(\s*posedge\s+clk\s*\)\s*assert\s+property', 'assert property', text, flags=re.IGNORECASE)
 
-    def _extract_used_signals(
-        self, assertion_text: str, rtl_ctx: RTLContext,
-    ) -> List[str]:
-        """Find all RTL signal names referenced in the assertion text."""
+        pattern = re.compile(
+            r'((?://[^\n]*\n\s*)*(?:\b\w+\s*:\s*)?\bassert\s+property\s*\([^;]+;)',
+            re.DOTALL | re.IGNORECASE
+        )
+        matches = pattern.findall(text)
+        
+        cleaned_matches = []
+        for m in matches:
+            clean = m.replace('```systemverilog', '').replace('```', '').strip()
+            if clean:
+                cleaned_matches.append(clean)
+                
+        return cleaned_matches
+
+    def _extract_used_signals(self, assertion_text: str, rtl_ctx: RTLContext) -> List[str]:
         found = []
         for name in rtl_ctx.signals:
             if re.search(rf"\b{re.escape(name)}\b", assertion_text):
@@ -156,12 +172,13 @@ class CandidateGenerator:
 
     @staticmethod
     def _extract_property_name(text: str) -> str:
-        m = re.search(r"property\s+(\w+)", text)
-        return m.group(1) if m else "unknown"
+        m_inline = re.search(r"(\w+)\s*:\s*assert\s+property", text)
+        if m_inline:
+            return m_inline.group(1)
+        return "unnamed_prop"
 
     @staticmethod
     def _guess_intent(text: str) -> Optional[IntentType]:
-        """Heuristic intent from comment tag or assertion body."""
         tag = re.search(r"//\s*\[(\w+)\]", text)
         if tag:
             try:
