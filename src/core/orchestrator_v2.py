@@ -31,7 +31,7 @@ from analyze.scoring import ScoringEngine
 from analyze.coverage_matrix import CoverageMatrix
 from report.artifact_writer import ArtifactWriter
 from report.metrics import compute_metrics
-
+from report.critical_analyzer import CriticalAnalyzer
 
 class VerifyOrchestratorV2:
     """
@@ -149,6 +149,13 @@ class VerifyOrchestratorV2:
             validation_results = self._formal.validate(rtl_ctx, gated_candidates)
             for vr in validation_results:
                 self._log(f"  {vr.status.value:18s}  {vr.candidate_id}")
+                
+                # --- NEW DEBUG PRINT ---
+                if vr.status == AssertionStatus.SYNTAX_ERROR:
+                    # Extract just the lines from Yosys containing the error
+                    for line in vr.error_log.split('\n'):
+                        if "ERROR:" in line or "syntax error" in line.lower():
+                            self._log(f"      [Yosys] {line.strip()}")
 
         # ── Step 5: Refine failed candidates ──────────────────────────
         self._log("\n[E] Refinement loop …")
@@ -232,6 +239,17 @@ class VerifyOrchestratorV2:
             analyses=analyses,
             metrics=metrics,
         )
+
+        # Generate Critical Analysis Markdown Report
+        print(f"[{run_id}] Generating Critical Analysis...")
+        critical_analyzer = CriticalAnalyzer()
+        markdown_report = critical_analyzer.generate_report(artifact)
+        
+        report_path = Path(self._output_dir) / "reports" / f"{rtl_ctx.module_name}_critical_analysis.md"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(markdown_report)
+        print(f"[{run_id}]  Report written to {report_path}")
+
 
         # Ensure output dirs exist
         (self._output_dir / "assertions").mkdir(parents=True, exist_ok=True)

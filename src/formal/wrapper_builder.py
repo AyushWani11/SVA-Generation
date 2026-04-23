@@ -25,7 +25,10 @@ class WrapperBuilder:
         """Return a wrapper SV string containing the assertion bound to the design."""
         module = top_module or rtl_ctx.module_name
 
-        # Build port connection list for bind
+        # 1. Clean the LLM text (Strip markdown blocks that cause syntax errors)
+        clean_text = assertion_text.replace("```systemverilog", "").replace("```sv", "").replace("```", "").strip()
+
+        # 2. Build port connection list for bind
         port_conns = []
         for name, sig in sorted(rtl_ctx.signals.items()):
             if sig.direction in ("input", "output"):
@@ -41,14 +44,14 @@ module assertion_checker (
 {self._port_declarations(rtl_ctx)}
 );
 
-{assertion_text}
+{clean_text}
 
 endmodule
 
-// Bind the checker to the DUT
-// bind {module} assertion_checker u_checker (
-// {port_str}
-// );
+// Bind the checker to the DUT so Yosys can analyze it
+bind {module} assertion_checker u_checker (
+{port_str}
+);
 """
 
     # ── helpers ───────────────────────────────────────────────────────

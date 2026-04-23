@@ -27,6 +27,61 @@ class RefinementLoop:
         self._llm = llm
         self._pe = prompt_engine or PromptEngine()
 
+    def analyze_failure(
+        self, 
+        candidate: CandidateAssertion, 
+        validation: ValidationResult,
+        iteration: int = 1
+    ) -> RefinementAction:
+        """Asks the LLM to analyze a Yosys Counterexample and classify the failure."""
+        
+        prompt = f"""
+You previously generated the following SystemVerilog Assertion:
+```systemverilog
+{candidate.assertion_text}
+This assertion was formally verified using SymbiYosys, but it FAILED.
+Here is the counterexample trace showing the signal states leading to the failure:
+{validation.counterexample}
+
+Task:
+Analyze the trace. Determine if the failure occurred because your assertion was overly restrictive/incorrectly written (ASSERTION_WRONG), OR if the assertion correctly matches the intended design specification but the RTL design itself contains a bug or corner case (DESIGN_BUG).
+
+Respond strictly in the following JSON format:
+{{
+"verdict": "ASSERTION_WRONG" | "DESIGN_BUG" | "SPEC_AMBIGUOUS",
+"rationale": "A brief 1-sentence explanation of what went wrong.",
+"revised_assertion": "If ASSERTION_WRONG, write the fixed SVA here. Otherwise, leave null."
+}}
+"""
+        
+        # Call your LLM interface
+        response_text = self.llm.generate(prompt)
+        # Parse the JSON response
+        try:
+            # Extract JSON block even if the LLM wraps it in markdown ticks
+            json_str = response_text.split("```json")[-1].split("```")[0].strip()
+            if not json_str.startswith("{"):
+                json_str = response_text 
+            
+            data = json.loads(json_str)
+            
+            return RefinementAction(
+                candidate_id=candidate.candidate_id,
+                iteration=iteration,
+                verdict=data.get("verdict", "UNFIXABLE"),
+                rationale=data.get("rationale", "Failed to parse rationale."),
+                revised_assertion_text=data.get("revised_assertion"),
+                consumed_cex=True
+            )
+        except Exception as e:
+            return RefinementAction(
+                candidate_id=candidate.candidate_id,
+                iteration=iteration,
+                verdict="UNFIXABLE",
+                rationale=f"LLM output parsing failed: {str(e)} | Raw Output: {response_text[:100]}",
+                consumed_cex=True
+            )
+
     # ── public API ────────────────────────────────────────────────────
 
     def run(

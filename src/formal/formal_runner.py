@@ -1,48 +1,134 @@
 """
 VERIFY V2 — Formal Runner
 ============================
-Wraps the existing V1 FormalVerifier with V2 status typing.
-Separates compile-only (syntax) from prove (formal proof).
+Native SymbiYosys (sby) execution wrapper for V2.
+Bypasses the V1 verifier entirely to provide deterministic mathematical proofs.
 """
 
 import time
+import subprocess
+from pathlib import Path
 from typing import List, Optional
 
 import sys
-from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.models import (
     AssertionStatus, CandidateAssertion, RTLContext, ValidationResult,
 )
-from formal_verifier import FormalVerifier, VerificationResult as V1Result
 from formal.wrapper_builder import WrapperBuilder
 from formal.cex_parser import CexParser
 
 
-# V1 → V2 status mapping
-_STATUS_MAP = {
-    "PROVEN":         AssertionStatus.PROVEN_FORMAL,
-    "COUNTEREXAMPLE": AssertionStatus.DISPROVEN_CEX,
-    "SYNTAX_ERROR":   AssertionStatus.SYNTAX_ERROR,
-    "TIMEOUT":        AssertionStatus.TIMEOUT,
-    "UNKNOWN":        AssertionStatus.UNKNOWN,
-}
-
-
 class FormalRunner:
-    """Formal validation of gated candidates via the V1 FormalVerifier."""
+    """Formal validation of gated candidates via native SymbiYosys."""
 
     def __init__(self, work_dir: str = "output/formal"):
-        self._verifier = FormalVerifier(work_dir=work_dir)
+        self.work_dir = Path(work_dir).resolve()
         self._wrapper = WrapperBuilder()
         self._cex = CexParser()
 
-    @property
-    def tool_available(self):
-        return self._verifier.tool_available
+    def get_tool_status(self) -> str:
+        """Check if SymbiYosys is installed and available in the system PATH."""
+        try:
+            subprocess.run(["sby", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return "Formal Toolchain: ✓ SymbiYosys (sby) Available"
+        except FileNotFoundError:
+            return "Formal Toolchain: ✗ SymbiYosys NOT FOUND in PATH"
 
-    # ── public API ────────────────────────────────────────────────────
+    def _run_symbiyosys_native(
+        self, 
+        rtl_ctx: RTLContext, 
+        candidate: CandidateAssertion, 
+        depth: int
+    ) -> ValidationResult:
+        """Natively execute SymbiYosys for a single assertion."""
+        self.work_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 1. Build and write the SV Wrapper
+        wrapper_sv = self._wrapper.build_bound_wrapper(rtl_ctx, candidate.assertion_text)
+        wrapper_path = self.work_dir / f"wrapper_{candidate.candidate_id}.sv"
+        wrapper_path.write_text(wrapper_sv)
+
+        # 2. Build the SymbiYosys (.sby) configuration script
+        sby_path = self.work_dir / f"run_{candidate.candidate_id}.sby"
+        rtl_full_path = Path(rtl_ctx.rtl_path).resolve()
+        
+        # FIX: Use quoted absolute paths directly in the script. 
+        # This prevents SBY from crashing on directories with spaces.
+        sby_content = f"""[options]
+mode bmc
+depth {depth}
+
+[engines]
+smtbmc boolector
+
+[script]
+read -formal -sv "{rtl_full_path}"
+read -formal -sv "{wrapper_path}"
+prep -top {rtl_ctx.module_name}
+"""
+        sby_path.write_text(sby_content)
+
+        # 3. Execute the Subprocess
+        t0 = time.time()
+        try:
+            result = subprocess.run(
+                ["sby", "-f", sby_path.name],
+                cwd=str(self.work_dir),
+                capture_output=True,
+                text=True,
+                timeout=60 # 60-second timeout per assertion
+            )
+            output = result.stdout + result.stderr
+            
+        except subprocess.TimeoutExpired:
+            return ValidationResult(
+                candidate_id=candidate.candidate_id,
+                status=AssertionStatus.TIMEOUT,
+                tool="symbiyosys",
+                message="Formal proof timed out.",
+                runtime_sec=time.time() - t0
+            )
+        except Exception as e:
+            return ValidationResult(
+                candidate_id=candidate.candidate_id,
+                status=AssertionStatus.TOOL_ERROR,
+                tool="symbiyosys",
+                message=f"Tool execution failed: {str(e)}",
+                runtime_sec=time.time() - t0
+            )
+
+        runtime = round(time.time() - t0, 3)
+
+        # 4. Parse the Verdict from Terminal Output
+        status = AssertionStatus.UNKNOWN
+        cex_text = None
+        message = "Unknown verdict."
+
+        if "DONE (PASS)" in output:
+            status = AssertionStatus.PROVEN_FORMAL
+            message = f"Proven up to depth {depth}."
+        elif "DONE (FAIL)" in output:
+            status = AssertionStatus.DISPROVEN_CEX
+            message = "Counterexample found."
+            raw_cex = self._cex.parse(output, candidate.property_name)
+            if raw_cex:
+                cex_text = self._cex.minimise(raw_cex)
+        elif "ERROR" in output or "Syntax error" in output:
+            status = AssertionStatus.SYNTAX_ERROR
+            message = "Syntax or structural error detected by Yosys."
+
+        return ValidationResult(
+            candidate_id=candidate.candidate_id,
+            status=status,
+            tool="symbiyosys",
+            message=message,
+            proof_depth=depth if status == AssertionStatus.PROVEN_FORMAL else None,
+            counterexample=cex_text,
+            error_log=output if status != AssertionStatus.PROVEN_FORMAL else "",
+            runtime_sec=runtime
+        )
 
     def validate(
         self,
@@ -51,64 +137,12 @@ class FormalRunner:
         depth: int = 20,
     ) -> List[ValidationResult]:
         """
-        Validate a list of gated candidates.
-        Each candidate is individually verified via the tool chain.
+        Validate a list of gated candidates using native V2 SymbiYosys integration.
         """
         results: List[ValidationResult] = []
 
-        assertion_texts = [c.assertion_text for c in gated_candidates]
-        t0 = time.time()
-
-        v1_results: List[V1Result] = self._verifier.verify_assertions(
-            rtl_ctx.rtl_path, assertion_texts, rtl_ctx.module_name,
-        )
-
-        elapsed = time.time() - t0
-        per_assertion = elapsed / max(len(v1_results), 1)
-
-        for v1r, cand in zip(v1_results, gated_candidates):
-            status = _STATUS_MAP.get(v1r.status, AssertionStatus.UNKNOWN)
-
-            # Determine which tool was used
-            tool = "regex_standalone"
-            for name in ("symbiyosys", "yosys", "iverilog"):
-                if self._verifier.tool_available.get(name):
-                    tool = name
-                    break
-
-            cex_text: Optional[str] = None
-            if v1r.counterexample:
-                cex_text = self._cex.minimise(v1r.counterexample)
-
-            # Distinguish syntax-only pass from formal proof
-            if status == AssertionStatus.PROVEN_FORMAL and tool in ("iverilog", "regex_standalone"):
-                status = AssertionStatus.SYNTAX_OK_ONLY
-
-            results.append(ValidationResult(
-                candidate_id=cand.candidate_id,
-                status=status,
-                tool=tool,
-                message=v1r.message,
-                proof_depth=depth if status == AssertionStatus.PROVEN_FORMAL else None,
-                counterexample=cex_text,
-                error_log=v1r.error_log,
-                runtime_sec=round(per_assertion, 3),
-            ))
+        for cand in gated_candidates:
+            result = self._run_symbiyosys_native(rtl_ctx, cand, depth)
+            results.append(result)
 
         return results
-
-    # ── convenience ───────────────────────────────────────────────────
-
-    def run_compile_syntax(
-        self, rtl_files: List[str], wrapper_file: str
-    ) -> ValidationResult:
-        """Syntax-only compile using iverilog/yosys (exposed for direct use)."""
-        # Delegate to the V1 verifier's syntax paths
-        raise NotImplementedError("Use validate() for the standard path.")
-
-    def run_formal_prove(self, sby_file: str) -> ValidationResult:
-        """Run a sby proof (exposed for direct use)."""
-        raise NotImplementedError("Use validate() for the standard path.")
-
-    def get_tool_status(self) -> str:
-        return self._verifier.get_tool_status()
